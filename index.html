@@ -17,10 +17,13 @@
 <style>
   :root { --navy: #14213d; --gold: #b8913a; --paper: #fffdf8; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--navy); font-family: Tahoma, "Segoe UI", Arial, sans-serif; }
-  /* the status-bar band is navy (like the system's top bar), the home-indicator band light (like its bottom bar) */
+  /* the status-bar band is navy (like the system's top bar); the system reaches the very bottom of the screen and pads its
+     own bottom bar for the iPhone home bar (the shell tells it the size) — every iPhone, iPad and Android phone / tablet */
   body { background: linear-gradient(var(--navy) 0 50%, var(--paper) 50% 100%); }
-  #app { position: fixed; left: 0; right: 0; top: env(safe-area-inset-top); bottom: env(safe-area-inset-bottom);
-    width: 100%; height: calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border: 0; background: var(--paper); }
+  #app { position: fixed; left: 0; top: env(safe-area-inset-top); width: 100%; height: calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    border: 0; background: var(--paper); display: block; }
+  #probe { position: fixed; left: 0; top: 0; visibility: hidden; pointer-events: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   #splash { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: var(--navy); color: #fff; transition: opacity .25s; }
   #splash.gone { opacity: 0; pointer-events: none; }
   #splash .box { text-align: center; }
@@ -40,6 +43,7 @@
 </head>
 <body>
 <div id="splash" aria-live="polite"><div class="box"><img src="icon-192.png" alt=""><p>جارٍ فتح نظام سورا…</p><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+<div id="probe"></div>
 <iframe id="app" title="SURA OPS" allow="geolocation *; clipboard-read *; clipboard-write *; fullscreen *; web-share *"></iframe>
 <div id="bar" role="dialog" aria-live="polite"><div id="bar-text"></div><div class="acts" id="bar-acts"></div></div>
 <script>
@@ -64,9 +68,25 @@
     return out;
   }
   function standalone() { return !!((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone); }
-  function info() {
-    return { standalone: standalone(), notify: ('Notification' in window) ? Notification.permission : 'unsupported', test: test, v: 1 };
+  function insets() {
+    var cs = window.getComputedStyle(document.getElementById('probe'));
+    return { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0, bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 };
   }
+  function info() {
+    return { standalone: standalone(), notify: ('Notification' in window) ? Notification.permission : 'unsupported', test: test, v: 2, insets: insets() };
+  }
+  // the system fills the screen from under the status bar to the very bottom, whatever the device and its orientation
+  var lastSize = '', fullBottom = false;   // fullBottom: the system pads its own bottom bar (it said so in «hello»)
+  function layout() {
+    var ins = insets(), h = Math.max(240, Math.round(window.innerHeight - ins.top - (fullBottom ? 0 : ins.bottom)));
+    frame.style.top = ins.top + 'px';
+    frame.style.height = h + 'px';
+    var size = [ins.top, ins.right, ins.bottom, ins.left, h, window.innerWidth].join(',');
+    if (size !== lastSize) { lastSize = size; tellInfo(); }
+  }
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', function () { setTimeout(layout, 250); setTimeout(layout, 800); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(layout, 300); });
   function hideSplash() { splash.classList.add('gone'); setTimeout(function () { splash.style.display = 'none'; }, 300); }
   setTimeout(hideSplash, 15000);
 
@@ -75,6 +95,7 @@
     if (!d || d.so !== 1 || !okOrigin(e.origin) || e.source !== frame.contentWindow && !isInside(e.source)) return;
     if (d.t === 'hello') {
       appWin = e.source; appOrigin = e.origin;
+      if (d.caps && d.caps.indexOf && d.caps.indexOf('insets') >= 0 && !fullBottom) { fullBottom = true; layout(); }
       e.source.postMessage({ so: 1, t: 'all', items: all(), info: info() }, e.origin);
       hideSplash();
       setTimeout(offer, 4000);
@@ -85,6 +106,8 @@
       notify(d);
     } else if (d.t === 'perm') {
       askNotify();
+    } else if (d.t === 'reload') {
+      location.reload();                        // «تحديث الآن»: the newest published version
     }
   });
   // the system's page sits inside Google's own frame: accept messages from any frame inside ours
@@ -144,6 +167,7 @@
     }
   }
 
+  layout();
   frame.src = test ? TEST : PROD;
 })();
 </script>
