@@ -16,10 +16,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root { --navy: #14213d; --gold: #b8913a; --paper: #fffdf8; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--navy); font-family: Tahoma, "Segoe UI", Arial, sans-serif; }
+  html, body { margin: 0; height: 100%; background: var(--paper); font-family: Tahoma, "Segoe UI", Arial, sans-serif; }
   /* the status-bar band is navy (like the system's top bar); the system reaches the very bottom of the screen and pads its
-     own bottom bar for the iPhone home bar (the shell tells it the size) — every iPhone, iPad and Android phone / tablet */
-  body { background: linear-gradient(var(--navy) 0 50%, var(--paper) 50% 100%); }
+     own bottom bar for the iPhone home bar (the shell tells it the size) — every iPhone, iPad and Android phone / tablet.
+     29-10-2026: an iPhone home-screen app (iOS 26) gives a page that is shorter than the screen a view that ends a status
+     bar's height above the bottom (WebKit bug 301108) — the navy strip under the bottom bar. A page at least as tall as the
+     screen gets the whole screen, so the page is made that tall (only as a home-screen app; never taller than needed).
+     Anything left under the system is white, never navy. */
+  @media (display-mode: standalone) { html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); } }
+  html.ios-app { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
+  #sb { position: fixed; left: 0; right: 0; top: 0; height: env(safe-area-inset-top); background: var(--navy); }
   #app { position: fixed; left: 0; top: env(safe-area-inset-top); width: 100%; height: calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     border: 0; background: var(--paper); display: block; }
   #probe { position: fixed; left: 0; top: 0; visibility: hidden; pointer-events: none;
@@ -43,6 +49,7 @@
 </head>
 <body>
 <div id="splash" aria-live="polite"><div class="box"><img src="icon-192.png" alt=""><p>جارٍ فتح نظام سورا…</p><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+<div id="sb"></div>
 <div id="probe"></div>
 <iframe id="app" title="SURA OPS" allow="geolocation *; clipboard-read *; clipboard-write *; fullscreen *; web-share *"></iframe>
 <div id="bar" role="dialog" aria-live="polite"><div id="bar-text"></div><div class="acts" id="bar-acts"></div></div>
@@ -58,6 +65,7 @@
   var test = q.get('env') === 'test';
   var KEY = test ? 'sura-test:' : 'sura:';           // TEST keeps its own values
   var frame = document.getElementById('app'), splash = document.getElementById('splash');
+  if (window.navigator.standalone) document.documentElement.classList.add('ios-app');   // iPhone / iPad home-screen app
   var appWin = null, appOrigin = '';
   function okOrigin(o) { return /^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(o); }
   function store() { try { return window.localStorage; } catch (e) { return null; } }
@@ -72,8 +80,15 @@
     var cs = window.getComputedStyle(document.getElementById('probe'));
     return { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0, bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 };
   }
+  // this page's own version: «version.json» on the site says when a newer one is published (then the system shows «1»
+  // on Settings and «تحديث الآن» reloads this page too). Change both together with every change of this page.
+  var SHELL_V = '29-10-2026.2';
+  var newer = '';                          // the newer version, once seen
+  var frameH = 0;
   function info() {
-    return { standalone: standalone(), notify: ('Notification' in window) ? Notification.permission : 'unsupported', test: test, v: 2, insets: insets() };
+    var sc = window.screen || {};
+    return { standalone: standalone(), notify: ('Notification' in window) ? Notification.permission : 'unsupported', test: test, v: 3, sv: SHELL_V,
+      update: !!newer, insets: insets(), scr: { w: sc.width || 0, h: sc.height || 0 }, iw: window.innerWidth, ih: window.innerHeight, fh: frameH };
   }
   // the system fills the screen from under the status bar to the very bottom, whatever the device and its orientation
   var lastSize = '', fullBottom = false;   // fullBottom: the system pads its own bottom bar (it said so in «hello»)
@@ -81,12 +96,38 @@
     var ins = insets(), h = Math.max(240, Math.round(window.innerHeight - ins.top - (fullBottom ? 0 : ins.bottom)));
     frame.style.top = ins.top + 'px';
     frame.style.height = h + 'px';
-    var size = [ins.top, ins.right, ins.bottom, ins.left, h, window.innerWidth].join(',');
+    frameH = h;
+    var size = [ins.top, ins.right, ins.bottom, ins.left, h, window.innerWidth, window.innerHeight].join(',');
     if (size !== lastSize) { lastSize = size; tellInfo(); }
   }
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', function () { setTimeout(layout, 250); setTimeout(layout, 800); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(layout, 300); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { setTimeout(layout, 300); checkNewer(false); } });
+  // a newer version of this page on the site? (asked when the app opens, comes back to the front, and every 30 minutes)
+  var lastAsk = 0;
+  function checkNewer(force) {
+    if (!force && Date.now() - lastAsk < 10 * 60000) return;
+    lastAsk = Date.now();
+    if (!window.fetch) return;
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      var v = j && typeof j.v === 'string' ? j.v : '';
+      if (v && v !== SHELL_V && v !== newer) { newer = v; tellInfo(); }
+    }, function () { /* offline: ask again later */ });
+  }
+  setInterval(function () { checkNewer(true); }, 30 * 60000);
+  // «تحديث الآن»: the newest system and the newest version of this page (the address changes a little so no old copy is used)
+  function reloadAll() {
+    var done = false;
+    var go = function () {
+      if (done) return; done = true;
+      var p = new URLSearchParams(location.search);
+      p.set('v', newer || SHELL_V);
+      p.set('r', String(Date.now() % 100000));
+      location.replace(location.pathname + '?' + p.toString());
+    };
+    try { if (reg && reg.update) { reg.update().then(go, go); setTimeout(go, 2500); return; } } catch (e) { /* ignore */ }
+    go();
+  }
   function hideSplash() { splash.classList.add('gone'); setTimeout(function () { splash.style.display = 'none'; }, 300); }
   setTimeout(hideSplash, 15000);
 
@@ -99,6 +140,7 @@
       e.source.postMessage({ so: 1, t: 'all', items: all(), info: info() }, e.origin);
       hideSplash();
       setTimeout(offer, 4000);
+      setTimeout(function () { checkNewer(true); }, 3000);
     } else if (d.t === 'set' && typeof d.k === 'string' && /^(so|sura)\.[A-Za-z0-9_.-]{1,60}$/.test(d.k)) {
       var s = store();
       if (s) try { if (d.v === '' || d.v == null) s.removeItem(KEY + d.k); else s.setItem(KEY + d.k, String(d.v)); } catch (err) { /* full */ }
@@ -107,7 +149,7 @@
     } else if (d.t === 'perm') {
       askNotify();
     } else if (d.t === 'reload') {
-      location.reload();                        // «تحديث الآن»: the newest published version
+      reloadAll();                              // «تحديث الآن»: the newest published version
     }
   });
   // the system's page sits inside Google's own frame: accept messages from any frame inside ours
@@ -118,7 +160,7 @@
 
   // ---- notifications ----------------------------------------------------------------------------------------
   var reg = null;
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(function (r) { reg = r; }, function () {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { reg = r; }, function () {});
   function notify(d) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     var title = String(d.title || 'سورا').slice(0, 120);

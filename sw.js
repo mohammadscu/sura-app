@@ -1,6 +1,6 @@
 // «تطبيق سورا» — keeps the small app page itself for a quick start, and opens the app from a notification.
 // The system's own pages and data are never stored here (they always come from Google).
-var C = 'sura-app-v2';
+var C = 'sura-app-v3';
 var FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(C).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
@@ -13,12 +13,13 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var u = new URL(e.request.url);
   if (u.origin !== self.location.origin || e.request.method !== 'GET') return;
+  if (/version\.json$/.test(u.pathname)) return;   // always asked from the site itself
   e.respondWith(fetch(e.request).then(function (r) {
-    var copy = r.clone();
-    caches.open(C).then(function (c) { c.put(e.request, copy); });
+    var copy = r.clone(), key = e.request.mode === 'navigate' ? './index.html' : e.request;   // one copy of the page, whatever the ?…
+    if (r.ok) caches.open(C).then(function (c) { c.put(key, copy); });
     return r;
   }).catch(function () {
-    return caches.match(e.request).then(function (m) { return m || caches.match('./index.html'); });
+    return caches.match(e.request, { ignoreSearch: true }).then(function (m) { return m || caches.match('./index.html'); });
   }));
 });
 self.addEventListener('notificationclick', function (e) {
