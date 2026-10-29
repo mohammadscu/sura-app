@@ -49,7 +49,7 @@
   // would otherwise wipe each time the browser is left: the sign-in, the language and the settings. It answers only the
   // system's own pages (Apps Script on googleusercontent.com) and shows notifications the system asks for.
   var PROD = 'https://script.google.com/macros/s/AKfycbwTv8nNw9E1GB8q_lhbuX0M7b4npS8RgnIMLY1uS37kORpDnRIETFv9o76kOO6Uy0u4/exec';
-  var TEST = 'https://script.google.com/macros/s/AKfycbxu52uwyPF2qBggxXNyNMbRGqfl98K_qEXkvn91xb0/dev';
+  var TEST = 'https://script.google.com/macros/s/AKfycbw0ZXQbNhHpbKyn9Sqa0aXMjcpeOc5dUux0aT5YjlcZ430_nlsmf45oMCG0vPKwdGHj/exec';
   var q = new URLSearchParams(location.search);
   var test = q.get('env') === 'test';
   var KEY = test ? 'sura-test:' : 'sura:';           // TEST keeps its own values
