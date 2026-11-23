@@ -8,8 +8,8 @@
 <meta name="theme-color" content="#14213d">
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" id="ic-tab" href="icon-192.png?v=2" type="image/png">
+<link rel="apple-touch-icon" id="ic-apple" href="apple-touch-icon.png?v=2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="سورا">
@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<div id="splash" aria-live="polite"><div class="box"><img src="icon-192.png" alt=""><p>جارٍ فتح نظام سورا…</p><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+<div id="splash" aria-live="polite"><div class="box"><img src="icon-192.png?v=2" alt=""><p>جارٍ فتح نظام سورا…</p><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
 <div id="sb"></div>
 <div id="probe"></div>
 <iframe id="app" title="SURA OPS" allow="geolocation *; clipboard-read *; clipboard-write *; fullscreen *; web-share *"></iframe>
@@ -82,7 +82,7 @@
   }
   // this page's own version: «version.json» on the site says when a newer one is published (then the system shows «1»
   // on Settings and «تحديث الآن» reloads this page too). Change both together with every change of this page.
-  var SHELL_V = '29-10-2026.2';
+  var SHELL_V = '23-11-2026.1';
   var newer = '';                          // the newer version, once seen
   var frameH = 0;
   function info() {
@@ -128,6 +128,62 @@
     try { if (reg && reg.update) { reg.update().then(go, go); setTimeout(go, 2500); return; } } catch (e) { /* ignore */ }
     go();
   }
+  // ---- 23-11-2026: the app icon follows the company logo (Settings → «شعار الشركة» in the system) ------------------
+  // The system sends its logo whenever it has it or it changes; this page draws it on a white square and uses it for the
+  // browser tab, the iPhone «Add to Home Screen» icon, the opening screen and notifications. The icon files on the site carry
+  // the logo of BAKED (no drawing needed for it). An icon already on an iPhone home screen never changes by itself (Apple):
+  // after a new logo it is removed and added again once.
+  var BAKED = 'mwrwncot', ICON_KEY = 'shell:icon', notifIcon = 'icon-192.png?v=2';
+  function drawIcon(img, size, frac) {
+    var c = document.createElement('canvas'); c.width = c.height = size;
+    var x = c.getContext('2d');
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, size, size);
+    var b = img._box || { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+    var box = size * frac, r = Math.min(box / b.w, box / b.h), w = b.w * r, h = b.h * r;
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(img, b.x, b.y, b.w, b.h, (size - w) / 2, (size - h) / 2, w, h);
+    return c.toDataURL('image/png');
+  }
+  /** The part of the picture that is not empty (transparent or white edges are left out). */
+  function contentBox(img) {
+    var W = img.naturalWidth, H = img.naturalHeight, c = document.createElement('canvas'); c.width = W; c.height = H;
+    var x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    var d = x.getImageData(0, 0, W, H).data, x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (var y = 0; y < H; y++) for (var i = 0; i < W; i++) {
+      var k = (y * W + i) * 4;
+      if (d[k + 3] < 12 || (d[k] > 245 && d[k + 1] > 245 && d[k + 2] > 245)) continue;
+      if (i < x0) x0 = i; if (i > x1) x1 = i; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    return x1 < 0 ? { x: 0, y: 0, w: W, h: H } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  }
+  function setHref(id, href) { var el = document.getElementById(id); if (el && el.getAttribute('href') !== href) el.setAttribute('href', href); }
+  function applyIcons(ic) {
+    var tab = ic ? ic.i192 : 'icon-192.png?v=2';
+    setHref('ic-tab', tab);
+    setHref('ic-apple', ic ? ic.a180 : 'apple-touch-icon.png?v=2');
+    var sp = document.querySelector('#splash img'); if (sp && sp.getAttribute('src') !== tab) sp.setAttribute('src', tab);
+    notifIcon = tab;
+  }
+  function savedIcons() { var s = store(); try { return s ? JSON.parse(s.getItem(ICON_KEY) || 'null') : null; } catch (e) { return null; } }
+  function setLogo(data, v) {
+    var s = store(), cur = savedIcons();
+    if (!data || v === BAKED) { if (cur && s) try { s.removeItem(ICON_KEY); } catch (e) {} applyIcons(null); return; }   // no logo / the one on the site
+    if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/]+=*$/.test(data) || data.length > 400000) return;
+    var sig = v || (data.length + ':' + data.slice(-48));
+    if (cur && cur.sig === sig) { applyIcons(cur); return; }
+    var img = new Image();
+    img.onload = function () {
+      try {
+        img._box = contentBox(img);
+        var ic = { sig: sig, i192: drawIcon(img, 192, 0.86), a180: drawIcon(img, 180, 0.86) };
+        if (s) try { s.setItem(ICON_KEY, JSON.stringify(ic)); } catch (e) { /* full: used for this visit only */ }
+        applyIcons(ic);
+      } catch (e) { /* an old browser: the icons on the site stay */ }
+    };
+    img.src = data;
+  }
+  (function () { var c = savedIcons(); if (c && c.i192 && c.a180) applyIcons(c); })();   // before anything else: a home-screen icon added now gets it
+
   function hideSplash() { splash.classList.add('gone'); setTimeout(function () { splash.style.display = 'none'; }, 300); }
   setTimeout(hideSplash, 15000);
 
@@ -150,6 +206,8 @@
       askNotify();
     } else if (d.t === 'reload') {
       reloadAll();                              // «تحديث الآن»: the newest published version
+    } else if (d.t === 'logo') {
+      setLogo(typeof d.d === 'string' ? d.d : '', typeof d.v === 'string' ? d.v : '');   // 23-11-2026: the app icon = the company logo
     }
   });
   // the system's page sits inside Google's own frame: accept messages from any frame inside ours
@@ -164,7 +222,7 @@
   function notify(d) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     var title = String(d.title || 'سورا').slice(0, 120);
-    var opts = { body: String(d.body || '').slice(0, 400), icon: 'icon-192.png', badge: 'icon-192.png', dir: 'rtl', lang: 'ar' };
+    var opts = { body: String(d.body || '').slice(0, 400), icon: notifIcon, badge: 'icon-192.png?v=2', dir: 'rtl', lang: 'ar' };
     if (d.tag) opts.tag = String(d.tag).slice(0, 60);
     if (reg && reg.showNotification) reg.showNotification(title, opts).catch(function () {});
     else try { new Notification(title, opts); } catch (e) { /* Android needs the service worker */ }

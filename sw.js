@@ -1,7 +1,7 @@
 // «تطبيق سورا» — keeps the small app page itself for a quick start, and opens the app from a notification.
 // The system's own pages and data are never stored here (they always come from Google).
-var C = 'sura-app-v3';
-var FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+var C = 'sura-app-v4';
+var FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png?v=2', './icon-512.png?v=2', './apple-touch-icon.png?v=2'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(C).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
 });
